@@ -190,6 +190,9 @@ class MainWindow(QtWidgets.QMainWindow):
         tabs.addTab(temps, "Temperatures")
         tabs.addTab(currs, "Currents")
 
+        # Number of points shown
+        self.N_show = 150
+
         # Layout of first tab (Temperatures)
         layout_temps = QVBoxLayout()
 
@@ -237,6 +240,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.temp_plot.line_labels[2] = ["|T_hot-T_cold|","T_NTC-T_cold"]
         self.temp_plot.fig.tight_layout()
 
+        # Number of points shown selector
+        self.num_label = QLabel(" Select number of points shown (4s per point): ")
+        font_nlabel = self.num_label.font()
+        font_nlabel.setPointSize(15)
+        self.num_label.setFont(font_nlabel)
+
+        self.num_to_show = QSpinBox()
+        self.num_to_show.setMinimum(0)
+        self.num_to_show.setMaximum(1000)
+        self.num_to_show.setSingleStep(10)
+        self.num_to_show.setValue(self.N_show)
+        self.num_to_show.valueChanged.connect(self.num_changed)
+        font_nshow = self.num_to_show.font()
+        font_nshow.setPointSize(15)
+        self.num_to_show.setFont(font_nshow)
+
         # Layout construction
         layout_mode = QHBoxLayout()
         layout_mode.addWidget(self.last_T_NTC)
@@ -244,7 +263,12 @@ class MainWindow(QtWidgets.QMainWindow):
         layout_mode.addWidget(self.heat_or_cool)
         layout_temps.addLayout(layout_mode)
 
-        layout_temps.addWidget(self.toolbar_temp)
+        layout_plots = QHBoxLayout()
+        layout_plots.addWidget(self.toolbar_temp)
+        layout_plots.addWidget(self.num_label)
+        layout_plots.addWidget(self.num_to_show)
+        layout_temps.addLayout(layout_plots)
+
         self.temp_plot.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         layout_temps.addWidget(self.temp_plot)
 
@@ -316,8 +340,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Data list initialization
         self.data = []
+        self.data_full = []
         for i in range(13):
             self.data.append([])
+            self.data_full.append([])
 
         # Thread initialization
         self.queue = Queue()
@@ -386,36 +412,60 @@ class MainWindow(QtWidgets.QMainWindow):
         It then updates the plots and the labels widgets.
         """
         # Number of points shown
-        N_show = 150
-        N = min(N_show,len(self.data[0]))
+        N = min(self.N_show,len(self.data_full[0]))
 
         # Data distribution
-        t = self.data[0][-N:]
+        t = self.data_full[0][-N:]
         t.append(a)
-        dp = self.data[1][-N:]
+        self.data_full[0].append(a)
+
+        dp = self.data_full[1][-N:]
         dp.append(b)
-        tchip= self.data[2][-N:]
+        self.data_full[1].append(b)
+
+        tchip= self.data_full[2][-N:]
         tchip.append(c)
-        tcold = self.data[3][-N:]
+        self.data_full[2].append(c)
+
+        tcold = self.data_full[3][-N:]
         tcold.append(d)
-        thot= self.data[4][-N:]
+        self.data_full[3].append(d)
+
+        thot= self.data_full[4][-N:]
         thot.append(e)
-        del_hc= self.data[5][-N:]
+        self.data_full[4]].append(e)
+
+        del_hc= self.data_full[5][-N:]
         del_hc.append(f)
-        del_cc= self.data[6][-N:]
+        self.data_full[5].append(f)
+
+        del_cc= self.data_full[6][-N:]
         del_cc.append(g)
-        del_dc= self.data[7][-N:]
+        self.data_full[6].append(g)
+
+        del_dc= self.data_full[7][-N:]
         del_dc.append(h)
-        del_ch= self.data[8][-N:]
+        self.data_full[7].append(h)
+
+        del_ch= self.data_full[8][-N:]
         del_ch.append(i)
-        del_dh= self.data[9][-N:]
+        self.data_full[8].append(i)
+
+        del_dh= self.data_full[9][-N:]
         del_dh.append(j)
-        i_hv= self.data[10][-N:]
+        self.data_full[9].append(j)
+
+        i_hv= self.data_full[10][-N:]
         i_hv.append(k)
-        i_pwell= self.data[11][-N:]
+        self.data_full[10].append(k)
+
+        i_pwell= self.data_full[11][-N:]
         i_pwell.append(l)
-        i_psub= self.data[12][-N:]
+        self.data_full[11].append(l)
+
+        i_psub= self.data_full[12][-N:]
         i_psub.append(m)
+        self.data_full[12].append(m)
 
         self.data[0] = t
         self.data[1] = dp
