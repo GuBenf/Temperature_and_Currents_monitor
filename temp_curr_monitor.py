@@ -1,8 +1,12 @@
-# YET TO DO:
-# - Modify the data in order to read from Arduino and Keithleys (DONE for Arduino!)
-# - Some graphical tweaks
-# - Test efficiency (DELAY!!) with Arduino as a timer (refresh every 4 s)
-# - Output data file writing
+# TO DO:
+# - Check if ramp up/down and ramp voltage DC functions are compatible with main
+# - Integrate them in main
+# - Repeat for HV
+# - Complete all the functions related to widgets
+
+# - Test the UI in lab !!!!!!
+
+
 
 import sys
 import serial
@@ -16,13 +20,14 @@ from queue import Queue,Empty
 
 
 from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtCore import QThread,pyqtSignal
-from PyQt5.QtWidgets import QVBoxLayout,QWidget,QTabWidget,QLabel,QHBoxLayout,QComboBox, QPushButton
+from PyQt5.QtCore import QThread,pyqtSignal,QTimer
+from PyQt5.QtWidgets import QVBoxLayout,QWidget,QTabWidget,QLabel,QHBoxLayout,QComboBox, QPushButton, QSpinBox, QDoubleSpinBox
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+import pyvisa as visa
 import pymeasure.instruments.keithley as kit
 
 
@@ -48,15 +53,22 @@ class GetData(QtCore.QObject):
         ff = "-".join([dat,tim])
         file = "time-and-dew-point-{0}.dat".format(ff)
         self.filename = directory+file # file name << CHANGE WHEN NEEDED
+        self.output_data_file = open(self.filename,"w")
 
         # Initialization of the serial port for communication with Arduino
         self.Arduino = serial.Serial("/dev/ttyUSB0",115200, timeout=0.01) # open the serial port << CHANGE WHEN NEEDED
 
         # INSERT THE CORRECT LINKS FOR THE KEITHLEYS
         # Initialization of the Keithleys for current measuring
-        self.keithley1 = kit.Keithley2450("169.254.091.1")
-        self.keithley2 = kit.Keithley2450("169.254.091.2")
-        self.keithley3 = kit.Keithley2450("169.254.091.3")
+        # self.keithley1 = kit.Keithley2450("TCPIP0::169.254.91.1::inst0::INSTR")
+        # self.keithley2 = kit.Keithley2450("TCPIP0::169.254.91.2::inst0::INSTR")
+        # self.keithley3 = kit.Keithley2450("TCPIP0::169.254.91.3::inst0::INSTR")
+        self.rm,self.keithley1,self.keithley2,self.keithley3 = self.configure_keithleys()
+
+        # self.keithley1 = self.rm.open_resource("TCPIP0::169.254.91.1::inst0::INSTR")
+        # self.keithley2 = self.rm.open_resource("TCPIP0::169.254.91.2::inst0::INSTR")
+        # self.keithley3 = self.rm.open_resource("TCPIP0::169.254.91.3::inst0::INSTR")
+
 
         # IF THE CURRENTS' PART DOESN'T WORK: TRY WITH THE COMMANDS OF THE RAMP UP
 
@@ -70,12 +82,15 @@ class GetData(QtCore.QObject):
         starttime = time.time() # starting time
         self.active = True # flag for exit procedure management
         self.currents = True # flag for currents measuring management
+        last_ihv = 0
+        last_ipwell = 0
+        last_ipsub = 0
         while self.active:
             try:
 
-                if ard.inWaiting() > 0: # Do not do anything if there are no characters to read
+                if self.Arduino.inWaiting() > 0: # Do not do anything if there are no characters to read
                     while True:
-                        data = ard.readline().decode() # read data and decode
+                        data = self.Arduino.readline().decode() # read data and decode
                         # print(repr(data))
                         if not data:
                             break
@@ -97,34 +112,86 @@ class GetData(QtCore.QObject):
 
                             # self.data structure: time,dew point,T_NTC,T_Cold,T_hot,Delta_ColdNTC,Delta_DpNTC,Delta_NTCHot,Delta_DpHot,I_HV,I_pwell,I_psub
 
-                            self.data_set[0].append(tt)
-                            self.data_set[1].append(ddpp)
-                            self.data_set[2].append(ttchip)
-                            self.data_set[3].append(ttcold)
-                            self.data_set[4].append(tthot)
-                            self.data_set[5].append(delta_hc)
-                            self.data_set[6].append(delta_cc)
-                            self.data_set[7].append(delta_dc)
-                            self.data_set[8].append(delta_ch)
-                            self.data_set[9].append(delta_dh)
+                            # self.data_set[0].append(tt)
+                            # self.data_set[1].append(ddpp)
+                            # self.data_set[2].append(ttchip)
+                            # self.data_set[3].append(ttcold)
+                            # self.data_set[4].append(tthot)
+                            # self.data_set[5].append(delta_hc)
+                            # self.data_set[6].append(delta_cc)
+                            # self.data_set[7].append(delta_dc)
+                            # self.data_set[8].append(delta_ch)
+                            # self.data_set[9].append(delta_dh)
 
                             # Currents' part managed by the currents flag
                             if self.currents:
-                                i_hv = self.keithley3.current*1000 # I_HV converted in mA
-                                i_pwell = self.keithley2.current*1000 # I_pwell converted in mA
-                                i_psub = self.keithley1.current*1000 # I_psub converted in mA
-                                self.data_set[10].append(i_hv)
-                                self.data_set[11].append(i_pwell)
-                                self.data_set[12].append(i_psub)
+                                i_hv = self.measure_current(self.keithley3)*1000000 # I_HV converted in uA
+                                i_pwell = self.measure_current(self.keithley2)*1000 # I_pwell converted in mA
+                                i_psub = self.measure_current(self.keithley1)*1000 # I_psub converted in mA
+
+                                last_ipwell = i_pwell
+                                last_ipsub = i_psub
+                                last_ihv = i_hv
+                                # self.data_set[10].append(i_hv)
+                                # self.data_set[11].append(i_pwell)
+                                # self.data_set[12].append(i_psub)
                             else:
-                                i_hv = 0
-                                i_pwell = 0
-                                i_psub = 0
+                                i_hv = last_ihv
+                                i_pwell = last_ipwell
+                                i_psub = last_ipsub
                             # Signal with the new data
                             self.dataChanged.emit(tt,ddpp,ttchip,ttcold,tthot,delta_hc,delta_cc,delta_dc,delta_ch,delta_dh,i_hv,i_pwell,i_psub)
             except Empty:
                 print("Empty")
                 continue
+
+    def measure_current(self,inst):
+        inst.write("smu.measure.read()") # saving without append, it overwrites old values
+        inst.write("print(smu.measure.read())")
+        response = inst.read()
+        response = float(response)
+        return response
+
+    def configure_keithleys(self):
+        rm = visa.ResourceManager()
+        keithley1 = rm.open_resource("TCPIP0::169.254.91.1::inst0::INSTR")
+        keithley2 = rm.open_resource("TCPIP0::169.254.91.2::inst0::INSTR")
+        keithley3 = rm.open_resource("TCPIP0::169.254.91.3::inst0::INSTR")
+
+        keithley2.write("smu.source.func = smu.FUNC_DC_VOLTAGE") # Source function --> voltage
+        keithley2.write("smu.source.range = 2.000000e+01")
+        keithley2.write("smu.source.autorange = smu.OFF")
+        keithley2.write("smu.measure.range = 1.000000e-02")
+        keithley2.write("smu.measure.autorange = smu.OFF")
+        keithley2.write("smu.source.ilimit.level = 3.000000e-03")
+        keithley2.write("smu.source.autodelay = smu.OFF")
+        keithley2.write("smu.source.protect.level = smu.PROTECT_20V")
+        keithley2.write("smu.source.readback = smu.ON")
+        keithley2.write("smu.measure.func = smu.FUNC_DC_CURRENT") # Measure function --> current
+
+        keithley1.write("smu.source.func = smu.FUNC_DC_VOLTAGE") # Source function --> voltage
+        keithley1.write("smu.source.range = 2.000000e+01")
+        keithley1.write("smu.source.autorange = smu.OFF")
+        keithley1.write("smu.measure.range = 1.000000e-02")
+        keithley1.write("smu.measure.autorange = smu.OFF")
+        keithley1.write("smu.source.ilimit.level = 3.000000e-03")
+        keithley1.write("smu.source.autodelay = smu.OFF")
+        keithley1.write("smu.source.protect.level = smu.PROTECT_20V")
+        keithley1.write("smu.source.readback = smu.ON")
+        keithley1.write("smu.measure.func = smu.FUNC_DC_CURRENT") # Measure function --> current
+
+        keithley3.write("smu.source.func = smu.FUNC_DC_VOLTAGE") # Source function --> voltage
+        keithley3.write("smu.source.range = 2.000000e+02")
+        keithley3.write("smu.source.autorange = smu.OFF")
+        keithley3.write("smu.measure.range = 1.000000e-03")
+        keithley3.write("smu.measure.autorange = smu.OFF")
+        keithley3.write("smu.source.ilimit.level = 3.000000e-04")
+        keithley3.write("smu.source.autodelay = smu.OFF")
+        keithley3.write("smu.source.protect.level = smu.PROTECT_40V")
+        keithley3.write("smu.source.readback = smu.ON")
+        keithley3.write("smu.measure.func = smu.FUNC_DC_CURRENT") # Measure function --> current
+
+        return rm,keithley1,keithley2,keithley3
 
 
     def stop(self):
@@ -186,12 +253,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
         temps = QWidget()
         currs = QWidget()
+        ramps = QWidget()
 
         tabs.addTab(temps, "Temperatures")
         tabs.addTab(currs, "Currents")
+        tabs.addTab(ramps, "Ramp up/down")
 
         # Number of points shown
         self.N_show = 150
+
+        # Step of the ramp
+        self.step = 0.5
+
+        # Delay of the ramp
+        self.delay = 0.1
+
+        # Voltages selected
+        self.HV = 0
+        self.pwell = 0
+        self.psub = 0
+
+        # Index of the chip under test ["W8R4","W2R17","W8R6"]
+        self.dut = 0
 
         # Layout of first tab (Temperatures)
         layout_temps = QVBoxLayout()
@@ -280,7 +363,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout_meass = QHBoxLayout()
 
         # Configuration of the plots
-        labs_currs = [["I_HV","I_DC"],["I [mA]","I [mA]"],["Time [s]","Time [s]"]]
+        labs_currs = [["I_HV","I_DC"],["I [uA]","I [mA]"],["Time [s]","Time [s]"]]
         self.curr_plot = MplCanvas(self,tit=labs_currs[0],ylab=labs_currs[1],xlab=labs_currs[2],subs=2)
         self.curr_plot.data_indx[0].append(10)
         self.curr_plot.line_colors[0].append("r")
@@ -302,8 +385,15 @@ class MainWindow(QtWidgets.QMainWindow):
         font_cur.setPointSize(20)
         self.stop_cur.setFont(font_cur)
 
+        # Stopped acquisition warning configuration
+        self.warning_currs = QLabel(" If the values are red they are not updated. ")
+        font_war = self.warning_currs.font()
+        font_war.setPointSize(20)
+        self.warning_currs.setFont(font_war)
+        self.warning_currs.setAlignment(QtCore.Qt.AlignRight)
+
         # Last currents widgets configuration
-        self.last_IHV = QLabel(" I_HV = 0.000 mA  ")
+        self.last_IHV = QLabel(" I_HV = 0.000 uA  ")
         font_HV = self.last_IHV.font()
         font_HV.setPointSize(30)
         self.last_IHV.setFont(font_HV)
@@ -321,7 +411,10 @@ class MainWindow(QtWidgets.QMainWindow):
         layout_meass.addWidget(self.last_Ipwell)
         layout_meass.addWidget(self.last_Ipsub)
 
-        layout_currs.addWidget(self.stop_cur)
+        layout_stop_curs = QHBoxLayout()
+        layout_stop_curs.addWidget(self.stop_cur)
+        layout_stop_curs.addWidget(self.warning_currs)
+        layout_currs.addLayout(layout_stop_curs)
         layout_currs.addLayout(layout_meass)
 
         self.toolbar_currs = NavigationToolbar(self.curr_plot, self)
@@ -334,9 +427,136 @@ class MainWindow(QtWidgets.QMainWindow):
 
         currs.setLayout(layout_currs)
 
+        # Layout of third tab (Ramps)
+        layout_ramps = QVBoxLayout()
+        layout_tensions = QHBoxLayout()
+
+        self.start_ramp = QPushButton("Start Ramp")
+        self.start_ramp.setCheckable(False)
+        self.start_ramp.clicked.connect(self.start_ramps)
+        self.start_ramp.setMaximumSize(300,70)
+        font_ramp = self.start_ramp.font()
+        font_ramp.setPointSize(20)
+        self.start_ramp.setFont(font_ramp)
+
+        self.lab_HV = QLabel(" HV =  ")
+        font_lHV = self.lab_HV.font()
+        font_lHV.setPointSize(30)
+        self.lab_HV.setFont(font_lHV)
+
+        self.ramp_HV = QSpinBox()
+        self.ramp_HV.setMinimum(0)
+        self.ramp_HV.setMaximum(30)
+        self.ramp_HV.setSingleStep(1)
+        self.ramp_HV.setValue(self.HV)
+        self.ramp_HV.valueChanged.connect(self.volt_changed)
+        font_rHV = self.ramp_HV.font()
+        font_rHV.setPointSize(15)
+        self.ramp_HV.setFont(font_rHV)
+
+        self.lab_pwell = QLabel(" Pwell =  ")
+        font_lpwell = self.lab_pwell.font()
+        font_lpwell.setPointSize(30)
+        self.lab_pwell.setFont(font_lpwell)
+
+        self.ramp_pwell = QSpinBox()
+        self.ramp_pwell.setMinimum(0)
+        self.ramp_pwell.setMaximum(6)
+        self.ramp_pwell.setSingleStep(1)
+        self.ramp_pwell.setValue(self.pwell)
+        self.ramp_pwell.valueChanged.connect(self.pwell_changed)
+        font_rpwell = self.ramp_pwell.font()
+        font_rpwell.setPointSize(15)
+        self.ramp_pwell.setFont(font_rpwell)
+
+        self.lab_psub = QLabel(" Abs(Psub-Pwell) =  ")
+        font_lpsub = self.lab_psub.font()
+        font_lpsub.setPointSize(30)
+        self.lab_psub.setFont(font_lpsub)
+
+        self.ramp_psub = QSpinBox()
+        self.ramp_psub.setMinimum(0)
+        self.ramp_psub.setMaximum(14)
+        self.ramp_psub.setSingleStep(1)
+        self.ramp_psub.setValue(self.psub)
+        self.ramp_psub.valueChanged.connect(self.psub_changed)
+        font_rpsub = self.ramp_psub.font()
+        font_rpsub.setPointSize(15)
+        self.ramp_psub.setFont(font_rpsub)
+
+        self.chip_sel = QLabel(" Select the chip under test:  ")
+        font_ch_sel = self.chip_sel.font()
+        font_ch_sel.setPointSize(30)
+        self.chip_sel.setFont(font_ch_sel)
+
+        self.chips = QComboBox()
+        self.chips.addItems(["W8R4","W2R17","W8R6"])
+        font_ch = self.chips.font()
+        font_ch.setPointSize(20)
+        self.chips.setFont(font_ch)
+        self.chips.currentIndexChanged.connect(self.chip_changed)
+
+        self.lab_step = QLabel(" Step =  ")
+        font_step = self.lab_step.font()
+        font_step.setPointSize(30)
+        self.lab_step.setFont(font_step)
+
+        self.step_sel = QDoubleSpinBox()
+        self.step_sel.setMinimum(0)
+        self.step_sel.setMaximum(1)
+        self.step_sel.setSingleStep(0.1)
+        self.step_sel.setValue(self.step)
+        self.step_sel.valueChanged.connect(self.step_changed)
+        font_step_sel = self.step_sel.font()
+        font_step_sel.setPointSize(15)
+        self.step_sel.setFont(font_step_sel)
+
+        self.lab_delay = QLabel(" Delay =  ")
+        font_delay = self.lab_delay.font()
+        font_delay.setPointSize(30)
+        self.lab_delay.setFont(font_delay)
+
+        self.delay_sel = QDoubleSpinBox()
+        self.delay_sel.setMinimum(0)
+        self.delay_sel.setMaximum(1)
+        self.delay_sel.setSingleStep(0.1)
+        self.delay_sel.setValue(self.delay)
+        self.delay_sel.valueChanged.connect(self.delay_changed)
+        font_delay_sel = self.delay_sel.font()
+        font_delay_sel.setPointSize(15)
+        self.delay_sel.setFont(font_delay_sel)
+
+        # Layout(s) construction
+        layout_tensions.addWidget(self.lab_HV)
+        layout_tensions.addWidget(self.ramp_HV)
+        layout_tensions.addWidget(self.lab_pwell)
+        layout_tensions.addWidget(self.ramp_pwell)
+        layout_tensions.addWidget(self.lab_psub)
+        layout_tensions.addWidget(self.ramp_psub)
+
+        layout_chips = QHBoxLayout()
+        layout_chips.addWidget(self.stop_cur)
+        layout_chips.addWidget(self.chip_sel)
+        layout_chips.addWidget(self.chips)
+        layout_ramps.addLayout(layout_chips)
+        layout_ramps.addLayout(layout_tensions)
+
+        layout_del_step = QHBoxLayout()
+        layout_del_step.addWidget(self.lab_step)
+        layout_del_step.addWidget(self.step_sel)
+        layout_del_step.addWidget(self.lab_delay)
+        layout_del_step.addWidget(self.delay_sel)
+
+        layout_ramps.addLayout(layout_del_step)
+
+        tabs.setTabText(2, "Ramp up/down")
+
+        ramps.setLayout(layout_ramps)
+
+
         # Utility lists
         self.plots = [self.temp_plot,self.curr_plot]
-        self.labels = [["Temperatures","Time [s]","T [*C]"],["Temperature Deltas","Time [s]","Delta T [*C]"],["Temperature Deltas","Time [s]","Delta T [*C]"],["I_HV","Time [s]","I [mA]"],["I_DC","Time [s]","I [mA]"]]
+        self.labels = [["Temperatures","Time [s]","T [*C]"],["Temperature Deltas","Time [s]","Delta T [*C]"],["Temperature Deltas","Time [s]","Delta T [*C]"],["I_HV","Time [s]","I [uA]"],["I_DC","Time [s]","I [mA]"]]
 
         # Data list initialization
         self.data = []
@@ -370,6 +590,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.thread.quit()
         self.thread.wait()
 
+    def num_changed(self,i):
+        self.N_show = i
+
+    def volt_changed(self,i):
+        self.HV = i
+
+    def pwell_changed(self,i):
+        self.pwell = i
+
+    def psub_changed(self,i):
+        self.psub = i
+
+    def step_changed(self,i):
+        self.step = i
+
+    def delay_changed(self,i):
+        self.delay = i
+
+    def chip_changed(self,i):
+        self.dut = i
+
     def index_changed(self,i):
         """
         Method called when the operating mode is changed.
@@ -387,6 +628,293 @@ class MainWindow(QtWidgets.QMainWindow):
             self.temp_plot.data_indx[1][0] = 9
             self.temp_plot.data_indx[2][1] = 8
 
+    def ramp_up(self,resource_name,set_voltage,voltage,step,delay,name):
+        """"
+            Ramps the voltage of the pwell source meter either up or down.
+
+        Parameters:
+            resource_name_pwell (str): VISA resource name.
+            resource_name_psub (str): VISA resource name.
+            voltage_pwell (float): Ending pwell voltage.
+            voltage_psub (float): Ending psub voltage.
+            step (float): Step increment for voltage change.
+            delay (float): Delay between each step.
+            name (string): Name of the voltage.
+        """
+        print(f"Ramping {name} up to ", voltage,"V")
+        for volt in np.arange(set_voltage, voltage + step, step):
+            if volt > voltage:
+                break
+            resource_name.write("smu.source.level = "+str(volt))
+            time.sleep(delay)
+            resource_name.write("smu.measure.read()") # saving without append, it overwrites old values
+            resource_name.write("print(smu.measure.read())")
+            response = resource_name.read()
+            response = float(response)*1000 # Convert in mA
+            print(f"Voltage: {volt:.1f} V, current: {response:.2e} mA", end="\r")
+            print()
+            time.sleep(0.1)
+
+    def ramp_down(self,resource_name,set_voltage,voltage,step,delay,name):
+        """"
+            Ramps the voltage of the pwell source meter either up or down.
+
+        Parameters:
+            resource_name_pwell (str): VISA resource name.
+            resource_name_psub (str): VISA resource name.
+            voltage_pwell (float): Ending pwell voltage.
+            voltage_psub (float): Ending psub voltage.
+            step (float): Step increment for voltage change.
+            delay (float): Delay between each step.
+            name (string): Name of the voltage.
+        """
+        print(f"Ramping {name} down to ", voltage,"V")
+        for volt in np.arange(set_voltage, voltage-step, -step):
+            if voltage!=0:
+                if volt < voltage:
+                    break
+            resource_name.write("smu.source.level = "+str(volt))
+            time.sleep(delay)
+            resource_name.write("smu.measure.read()") # saving without append, it overwrites old values
+            resource_name.write("print(smu.measure.read())")
+            response = resource_name.read()
+            response = float(response)*1000 # Convert in mA
+            print(f"Voltage: {volt:.1f} V, current: {response:.2e} mA", end="\r")
+            print()
+            time.sleep(0.1)
+
+
+
+
+    def ramp_voltage_DC(self,inst_pwell,inst_psub, voltage_pwell, voltage_psub, step, delay):
+        """
+        Ramps the voltage of a source meter either up or down.
+
+        Parameters:
+            resource_name_pwell (str): VISA resource name.
+            resource_name_psub (str): VISA resource name.
+            voltage_pwell (float): Ending pwell voltage.
+            voltage_psub (float): Ending psub voltage.
+            step (float): Step increment for voltage change.
+            delay (float): Delay between each step.
+        """
+        # # Configure the smu for pwell
+        # inst_pwell = conf_smu(resource_name_pwell)
+        #
+        # # Configure the smu for psub
+        # inst_psub = conf_smu(resource_name_psub)
+
+
+        # Safety: if pwell is lower than -6 V (set OVERPROTECTION voltage) or has a positive value it stops the program
+        if voltage_psub < 0.:
+            print("WARNING: provide the absolute value of psub!! ")
+            sys.exit(0)
+
+        if voltage_pwell < 0.:
+            print("WARNING: provide the absolute value of pwell!! ")
+            sys.exit(0)
+
+
+        if voltage_pwell<6:
+            if voltage_psub !=0:
+                print("WARNING: if pwell is <6 abs(psub-pwell) NEEDS TO be 0! ")
+                sys.exit(0)
+
+        elif voltage_pwell == 6:
+            #["W8R4","W2R17","W8R6"]
+            if self.dut == 0:
+                if voltage_psub > 4:
+                    print("WARNING: abs(psub-pwell) CANNOT be >4 (W8R04)! ")
+                    sys.exit(0)
+
+            elif self.dut == 1:
+                if voltage_psub > 9:
+                    print("WARNING: abs(psub-pwell) CANNOT be >9 (W2R17)! ")
+                    sys.exit(0)
+
+            elif self.dut == 2:
+                if voltage_psub > 14:
+                    print("WARNING: abs(psub-pwell) CANNOT be >14 (W8R6)! ")
+
+        elif voltage_pwell > 6:
+            print("WARNING: pwell CANNOT be >6!! ")
+            sys.exit(0)
+
+
+
+        # Change sign to the voltage values
+        voltage_pwell = - voltage_pwell
+        voltage_psub = - voltage_psub
+
+        pwell_name = "pwell"
+        psub_name = "psub"
+        # Create buffer for saving data in smu
+        # inst.write("testDatabuffer = buffer.make(20000)")
+
+        # Check set voltage before ramping up/down
+        inst_pwell.write("voltage_set = smu.source.level")
+        inst_pwell.write("print(voltage_set)")
+        responsev_pwell = inst_pwell.read()
+
+        print("Current pwell voltage set:", responsev_pwell,"V")
+        set_voltage_pwell = float(responsev_pwell)
+
+        inst_psub.write("voltage_set = smu.source.level")
+        inst_psub.write("print(voltage_set)")
+        responsev_psub = inst_psub.read()
+
+        print("Current psub voltage set:", responsev_psub,"V")
+        set_voltage_psub = float(responsev_psub)
+
+
+        # # Do nothing if the voltage is already set at given value
+        # if set_voltage_pwell == voltage_pwell:
+        #     print("pwell Voltage is already set to ",voltage_pwell, " V")
+        #     sys.exit(0)
+
+        # Check if the HV is higher or lower than the set value and the ramp up or down. For each step of ramp up/down it prints set voltage and measured current
+        if set_voltage_pwell > voltage_pwell:
+            ramp_down(inst_pwell,set_voltage_pwell,voltage_pwell,step,delay,pwell_name)
+            time.sleep(0.2)
+            print(" ")
+            ramp_down(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+
+        elif set_voltage_pwell < voltage_pwell:
+            ramp_up(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+            time.sleep(0.2)
+            print(" ")
+
+            ramp_up(inst_pwell,set_voltage_pwell,voltage_pwell,step,delay,pwell_name)
+
+        else:
+            if set_voltage_psub > voltage_psub:
+                ramp_down(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+
+            else:
+                ramp_up(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+
+
+
+        print(" ")
+
+        print("Voltage ramp completed.")
+        inst_pwell.write("voltage_set = smu.source.level")
+        inst_pwell.write("print(voltage_set)")
+        responsev_pwell_last = inst_pwell.read()
+        responsev_pwell_last = float(responsev_pwell_last)
+
+        inst_pwell.write("smu.measure.read()")
+        inst_pwell.write("print(smu.measure.read())")
+        response_well_last = inst_pwell.read()
+        response_well_last= float(response_well_last)*1000 # Convert in mA
+
+        inst_psub.write("voltage_set = smu.source.level")
+        inst_psub.write("print(voltage_set)")
+        responsev_psub_last = inst_psub.read()
+        responsev_psub_last = float(responsev_psub_last)
+
+        inst_psub.write("smu.measure.read()")
+        inst_psub.write("print(smu.measure.read())")
+        response_sub_last = inst_psub.read()
+        response_sub_last= float(response_sub_last)*1000 # Convert in mA
+
+
+        # inst_psub.write("voltage_set = smu.source.level")
+        # inst_psub.write("print(voltage_set)")
+        # responsev_psub_end = inst_psub.read()
+        print("Current values:")
+        print(f"Pwell: Voltage: {responsev_pwell_last:.1f} V, current: {response_well_last:.2e} mA")
+        print(f"abs(Psub-Pwell): Voltage: {responsev_psub_last:.1f} V, current: {response_sub_last:.2e} mA")
+
+    def ramp_voltage_HV(self,inst, end_voltage, step, delay):
+        """
+        Ramps the voltage of a source meter either up or down.
+
+        Parameters:
+            resource_name (str): VISA resource name.
+            start_voltage (float): Starting voltage.
+            end_voltage (float): Ending voltage.
+            step (float): Step increment for voltage change.
+            delay (float): Delay between each step.
+            ramp_direction (str): 'up' for ramp up, 'down' for ramp down.
+        """
+        # # Configure the smu
+        # inst = conf_smu(resource_name)
+
+        # Safety: if HV is higher than 40V (set OVERPROTECTION voltage) or has a negative value it stops the program
+        if abs(end_voltage)>30:
+            print("WARNING: the HV set is higher than the Overprotection Voltage set!")
+            sys.exit(0)
+
+
+        if end_voltage < 0.:
+            print("HV cannot be negative!! ")
+            sys.exit(0)
+
+        # Create buffer for saving data in smu
+        # inst.write("testDatabuffer = buffer.make(20000)")
+
+        # Check set voltage before ramping up/down
+        inst.write("voltage_set = smu.source.level")
+        inst.write("print(voltage_set)")
+        responsev = inst.read()
+        print("Current voltage set:", responsev,"V")
+
+        set_voltage = float(responsev)
+
+        # Do nothing if the voltage is already set at given value
+        if set_voltage == end_voltage:
+            print("Voltage is already set to ",end_voltage)
+            sys.exit(0)
+
+        # Check if the HV is higher or lower than the set value and the ramp up or down. For each step of ramp up/down it prints set voltage and measured current
+        if set_voltage > end_voltage:
+            print("Ramping down to ", end_voltage,"V")
+            for volt in np.arange(set_voltage, end_voltage-step, -step):
+                if end_voltage!=0:
+                    if volt < end_voltage:
+                        break
+                inst.write("smu.source.level = "+str(volt))
+                time.sleep(delay)
+                inst.write("smu.measure.read()") # saving without append, it overwrites old values
+                inst.write("print(smu.measure.read())")
+                response = inst.read()
+                response = float(response)
+                print(f"Voltage: {volt:.1f} V, current: {response:.2e} A", end="\r")
+                print()
+                time.sleep(0.1)
+        else:
+            print("Ramping up to ", end_voltage,"V")
+            for volt in np.arange(set_voltage, end_voltage + step, step):
+                if volt > end_voltage:
+                    break
+                inst.write("smu.source.level = "+str(volt))
+                time.sleep(delay)
+                inst.write("smu.measure.read()") # saving without append, it overwrites old values
+                inst.write("print(smu.measure.read())")
+                response = inst.read()
+                response = float(response)
+                print(f"Voltage: {volt:.1f} V, current: {response:.2e} A", end="\r")
+                print()
+                time.sleep(0.1)
+
+        print("Voltage ramp completed.")
+
+
+
+    def start_ramps(self):
+            self.receiver.currents = False
+            self.start_ramp.setText("Ramping...")
+            # Call the ramp voltage function
+            self.ramp_voltage_DC(self.receiver.keithley2,self.receiver.keithley1, self.pwell, self.psub, self.step, self.delay)
+            self.ramp_voltage_HV(self.receiver.keithley3, self.HV, self.step, self.delay)
+            self.start_ramp.setText("Start Ramp")
+            self.receiver.currents = True
+
+
+
+
+
     def stop_acq(self):
         """
         Method called when the Stop Acquisition Button is clicked.
@@ -397,10 +925,25 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.receiver.currents:
             self.receiver.currents = False
             self.stop_cur.setText("Restart Acquisition")
+            self.receiver.rm.close()
+            self.last_IHV.setStyleSheet('color: red')
+            self.last_Ipsub.setStyleSheet('color: red')
+            self.last_Ipwell.setStyleSheet('color: red')
+            self.stop_cur.setEnabled(False)
+            QTimer.singleShot(2000, lambda: self.stop_cur.setDisabled(False))
+
+
         # Restarting
         else:
             self.receiver.currents = True
             self.stop_cur.setText("Stop Acquisition")
+            self.receiver.rm,self.receiver.keithley1,self.receiver.keithley2,self.receiver.keithley3 =self.receiver.configure_keithleys()
+            self.last_IHV.setStyleSheet('color: black')
+            self.last_Ipsub.setStyleSheet('color: black')
+            self.last_Ipwell.setStyleSheet('color: black')
+            self.stop_cur.setEnabled(False)
+            QTimer.singleShot(2000, lambda: self.stop_cur.setDisabled(False))
+
 
     def onDataChanged(self,a,b,c,d,e,f,g,h,i,j,k,l,m):
         """
@@ -433,7 +976,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         thot= self.data_full[4][-N:]
         thot.append(e)
-        self.data_full[4]].append(e)
+        self.data_full[4].append(e)
 
         del_hc= self.data_full[5][-N:]
         del_hc.append(f)
@@ -508,9 +1051,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Updating of the temperature and currents labels
         t_ntc = " T_NTC = %.2f *C " % (self.data[2][-1])
-        ihv = " I_HV = %.4f mA  " % (self.data[10][-1]*1000)
-        ipwell = "I_pwell = %.4f mA  " % (self.data[11][-1]*1000)
-        ipsub = "I_psub = %.4f mA " % (self.data[12][-1]*1000)
+        ihv = " I_HV = %.2f uA  " % (self.data[10][-1])
+        ipwell = "I_pwell = %.4f mA  " % (self.data[11][-1])
+        ipsub = "I_psub = %.4f mA " % (self.data[12][-1])
         self.last_T_NTC.setText(t_ntc)
         self.last_IHV.setText(ihv)
         self.last_Ipwell.setText(ipwell)
