@@ -906,8 +906,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.receiver.currents = False
             self.start_ramp.setText("Ramping...")
             # Call the ramp voltage function
-            self.ramp_voltage_DC(self.receiver.keithley2,self.receiver.keithley1, self.pwell, self.psub, self.step, self.delay)
-            self.ramp_voltage_HV(self.receiver.keithley3, self.HV, self.step, self.delay)
+            if self.pwell == 0:
+                if self.pwell == 0:
+                    self.ramp_voltage_HV(self.receiver.keithley3, self.HV, self.step, self.delay)
+            else:
+                if self.HV == 0:
+                    self.ramp_voltage_DC(self.receiver.keithley2,self.receiver.keithley1, self.pwell, self.psub, self.step, self.delay)
+                else:
+                    print("Cannot power both the DCC and HVC parts!!")
+
             self.start_ramp.setText("Start Ramp")
             self.receiver.currents = True
 
