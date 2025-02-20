@@ -21,7 +21,7 @@ from queue import Queue,Empty
 
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import QThread,pyqtSignal,QTimer
-from PyQt5.QtWidgets import QVBoxLayout,QWidget,QTabWidget,QLabel,QHBoxLayout,QComboBox, QPushButton, QSpinBox, QDoubleSpinBox
+from PyQt5.QtWidgets import QVBoxLayout,QWidget,QTabWidget,QLabel,QHBoxLayout,QComboBox, QPushButton, QSpinBox, QDoubleSpinBox, QGridLayout
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -449,9 +449,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ramp_HV.setMaximum(30)
         self.ramp_HV.setSingleStep(1)
         self.ramp_HV.setValue(self.HV)
+        self.ramp_HV.setMaximumSize(200,70)
         self.ramp_HV.valueChanged.connect(self.volt_changed)
         font_rHV = self.ramp_HV.font()
-        font_rHV.setPointSize(15)
+        font_rHV.setPointSize(30)
         self.ramp_HV.setFont(font_rHV)
 
         self.lab_pwell = QLabel(" Pwell =  ")
@@ -464,9 +465,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ramp_pwell.setMaximum(6)
         self.ramp_pwell.setSingleStep(1)
         self.ramp_pwell.setValue(self.pwell)
+        self.ramp_pwell.setMaximumSize(200,70)
         self.ramp_pwell.valueChanged.connect(self.pwell_changed)
         font_rpwell = self.ramp_pwell.font()
-        font_rpwell.setPointSize(15)
+        font_rpwell.setPointSize(30)
         self.ramp_pwell.setFont(font_rpwell)
 
         self.lab_psub = QLabel(" Abs(Psub-Pwell) =  ")
@@ -479,9 +481,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ramp_psub.setMaximum(14)
         self.ramp_psub.setSingleStep(1)
         self.ramp_psub.setValue(self.psub)
+        self.ramp_psub.setMaximumSize(200,70)
         self.ramp_psub.valueChanged.connect(self.psub_changed)
         font_rpsub = self.ramp_psub.font()
-        font_rpsub.setPointSize(15)
+        font_rpsub.setPointSize(30)
         self.ramp_psub.setFont(font_rpsub)
 
         self.chip_sel = QLabel(" Select the chip under test:  ")
@@ -491,8 +494,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.chips = QComboBox()
         self.chips.addItems(["W8R4","W2R17","W8R6"])
+        self.chips.setMaximumSize(200,70)
         font_ch = self.chips.font()
-        font_ch.setPointSize(20)
+        font_ch.setPointSize(30)
         self.chips.setFont(font_ch)
         self.chips.currentIndexChanged.connect(self.chip_changed)
 
@@ -506,9 +510,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.step_sel.setMaximum(1)
         self.step_sel.setSingleStep(0.1)
         self.step_sel.setValue(self.step)
+        self.step_sel.setMaximumSize(200,70)
         self.step_sel.valueChanged.connect(self.step_changed)
         font_step_sel = self.step_sel.font()
-        font_step_sel.setPointSize(15)
+        font_step_sel.setPointSize(30)
         self.step_sel.setFont(font_step_sel)
 
         self.lab_delay = QLabel(" Delay =  ")
@@ -521,33 +526,68 @@ class MainWindow(QtWidgets.QMainWindow):
         self.delay_sel.setMaximum(1)
         self.delay_sel.setSingleStep(0.1)
         self.delay_sel.setValue(self.delay)
+        self.delay_sel.setMaximumSize(200,70)
         self.delay_sel.valueChanged.connect(self.delay_changed)
         font_delay_sel = self.delay_sel.font()
-        font_delay_sel.setPointSize(15)
+        font_delay_sel.setPointSize(30)
         self.delay_sel.setFont(font_delay_sel)
 
-        # Layout(s) construction
-        layout_tensions.addWidget(self.lab_HV)
-        layout_tensions.addWidget(self.ramp_HV)
-        layout_tensions.addWidget(self.lab_pwell)
-        layout_tensions.addWidget(self.ramp_pwell)
-        layout_tensions.addWidget(self.lab_psub)
-        layout_tensions.addWidget(self.ramp_psub)
+        self.lab_status = QLabel("  ")
+        font_status = self.lab_status.font()
+        font_status.setPointSize(30)
+        self.lab_status.setFont(font_status)
 
+        self.ramp_HV.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.ramp_pwell.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.ramp_psub.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.delay_sel.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.step_sel.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.chip_sel.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.chips.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.lab_status.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.start_ramp.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+
+        # Layout(s) construction
+        layout_ramps = QVBoxLayout()
+
+        # Creazione del GridLayout
+        grid_layout = QGridLayout()
+
+        # Aggiunta dei controlli per HV, Pwell, Psub nella griglia
+        grid_layout.addWidget(self.lab_HV, 0, 0)  # Prima riga, prima colonna
+        grid_layout.addWidget(self.ramp_HV, 0, 1)  # Prima riga, seconda colonna
+
+        grid_layout.addWidget(self.lab_pwell, 1, 0)  # Seconda riga, prima colonna
+        grid_layout.addWidget(self.ramp_pwell, 1, 1)  # Seconda riga, seconda colonna
+
+        grid_layout.addWidget(self.lab_psub, 2, 0)  # Terza riga, prima colonna
+        grid_layout.addWidget(self.ramp_psub, 2, 1)  # Terza riga, seconda colonna
+
+        # Aggiungi spaziatura tra le righe
+        grid_layout.setRowStretch(3, 1)  # Spazio extra dopo l'ultima riga
+        grid_layout.setVerticalSpacing(50)  # Distanza verticale tra le righe
+
+        # Aggiungi i controlli della modalità di selezione e pulsante start ramp
         layout_chips = QHBoxLayout()
-        layout_chips.addWidget(self.stop_cur)
+        layout_chips.addWidget(self.start_ramp)
         layout_chips.addWidget(self.chip_sel)
         layout_chips.addWidget(self.chips)
-        layout_ramps.addLayout(layout_chips)
-        layout_ramps.addLayout(layout_tensions)
+        grid_layout.addLayout(layout_chips, 3, 0, 1, 2)  # Aggiungi l'HBox alla quarta riga, coprendo 2 colonne
 
+        # Layout per step e delay
         layout_del_step = QHBoxLayout()
         layout_del_step.addWidget(self.lab_step)
         layout_del_step.addWidget(self.step_sel)
         layout_del_step.addWidget(self.lab_delay)
         layout_del_step.addWidget(self.delay_sel)
+        grid_layout.addLayout(layout_del_step, 4, 0, 1, 2)  # Aggiungi l'HBox alla quinta riga
 
-        layout_ramps.addLayout(layout_del_step)
+        # Aggiungi lo status
+        grid_layout.addWidget(self.lab_status, 5, 0, 1, 2)  # Status in fondo
+
+        # Configurazioni finali del layout
+        layout_ramps.addLayout(grid_layout)
 
         tabs.setTabText(2, "Ramp up/down")
 
@@ -686,7 +726,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 
-    def ramp_voltage_DC(self,inst_pwell,inst_psub, voltage_pwell, voltage_psub, step, delay):
+    def ramp_voltage_DC(self,inst_pwell,inst_psub, voltage_pwell, voltage_psub, step, delay,tmp_meas):
         """
         Ramps the voltage of a source meter either up or down.
 
@@ -708,37 +748,66 @@ class MainWindow(QtWidgets.QMainWindow):
         # Safety: if pwell is lower than -6 V (set OVERPROTECTION voltage) or has a positive value it stops the program
         if voltage_psub < 0.:
             print("WARNING: provide the absolute value of psub!! ")
-            sys.exit(0)
+            self.lab_status.setText(" WARNING: provide the absolute value of psub!! ")
+            self.ramp_psub.setValue(int(tmp_meas[2]))
+            self.ramp_pwell.setValue(int(tmp_meas[1]))
+
+            return
+
 
         if voltage_pwell < 0.:
             print("WARNING: provide the absolute value of pwell!! ")
-            sys.exit(0)
+            self.lab_status.setText(" WARNING: provide the absolute value of pwell!! ")
+            self.ramp_pwell.setValue(int(tmp_meas[1]))
+            self.ramp_psub.setValue(int(tmp_meas[2]))
+
+            return
 
 
         if voltage_pwell<6:
             if voltage_psub !=0:
                 print("WARNING: if pwell is <6 abs(psub-pwell) NEEDS TO be 0! ")
-                sys.exit(0)
+                self.lab_status.setText(" WARNING: if pwell is <6 abs(psub-pwell) NEEDS TO be 0! ")
+                self.ramp_psub.setValue(int(tmp_meas[2]))
+                self.ramp_pwell.setValue(int(tmp_meas[1]))
+
+                return
 
         elif voltage_pwell == 6:
             #["W8R4","W2R17","W8R6"]
             if self.dut == 0:
                 if voltage_psub > 4:
                     print("WARNING: abs(psub-pwell) CANNOT be >4 (W8R04)! ")
-                    sys.exit(0)
+                    self.lab_status.setText(" WARNING: abs(psub-pwell) CANNOT be >4 (W8R04)! ")
+                    self.ramp_psub.setValue(int(tmp_meas[2]))
+                    self.ramp_pwell.setValue(int(tmp_meas[1]))
+
+                    return
 
             elif self.dut == 1:
                 if voltage_psub > 9:
                     print("WARNING: abs(psub-pwell) CANNOT be >9 (W2R17)! ")
-                    sys.exit(0)
+                    self.lab_status.setText(" WARNING: abs(psub-pwell) CANNOT be >9 (W2R17)! ")
+                    self.ramp_psub.setValue(int(tmp_meas[2]))
+                    self.ramp_pwell.setValue(int(tmp_meas[1]))
+
+                    return
 
             elif self.dut == 2:
                 if voltage_psub > 14:
                     print("WARNING: abs(psub-pwell) CANNOT be >14 (W8R6)! ")
+                    self.lab_status.setText(" WARNING: abs(psub-pwell) CANNOT be >14 (W8R6)! ")
+                    self.ramp_psub.setValue(int(tmp_meas[2]))
+                    self.ramp_pwell.setValue(int(tmp_meas[1]))
+
+                    return
 
         elif voltage_pwell > 6:
             print("WARNING: pwell CANNOT be >6!! ")
-            sys.exit(0)
+            self.lab_status.setText(" WARNING: pwell CANNOT be >6!! ")
+            self.ramp_pwell.setValue(int(tmp_meas[1]))
+            self.ramp_psub.setValue(int(tmp_meas[2]))
+            return
 
 
 
@@ -774,30 +843,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Check if the HV is higher or lower than the set value and the ramp up or down. For each step of ramp up/down it prints set voltage and measured current
         if set_voltage_pwell > voltage_pwell:
-            ramp_down(inst_pwell,set_voltage_pwell,voltage_pwell,step,delay,pwell_name)
+            self.ramp_down(inst_pwell,set_voltage_pwell,voltage_pwell,step,delay,pwell_name)
             time.sleep(0.2)
             print(" ")
-            ramp_down(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+            self.ramp_down(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
 
         elif set_voltage_pwell < voltage_pwell:
-            ramp_up(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+            self.ramp_up(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
             time.sleep(0.2)
             print(" ")
 
-            ramp_up(inst_pwell,set_voltage_pwell,voltage_pwell,step,delay,pwell_name)
+            self.ramp_up(inst_pwell,set_voltage_pwell,voltage_pwell,step,delay,pwell_name)
 
         else:
             if set_voltage_psub > voltage_psub:
-                ramp_down(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+                self.ramp_down(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
 
             else:
-                ramp_up(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
+                self.ramp_up(inst_psub,set_voltage_psub,voltage_psub,step,delay,psub_name)
 
 
 
         print(" ")
 
         print("Voltage ramp completed.")
+        self.lab_status.setText(" Voltage ramp completed. ")
         inst_pwell.write("voltage_set = smu.source.level")
         inst_pwell.write("print(voltage_set)")
         responsev_pwell_last = inst_pwell.read()
@@ -826,7 +896,7 @@ class MainWindow(QtWidgets.QMainWindow):
         print(f"Pwell: Voltage: {responsev_pwell_last:.1f} V, current: {response_well_last:.2e} mA")
         print(f"abs(Psub-Pwell): Voltage: {responsev_psub_last:.1f} V, current: {response_sub_last:.2e} mA")
 
-    def ramp_voltage_HV(self,inst, end_voltage, step, delay):
+    def ramp_voltage_HV(self,inst, end_voltage, step, delay,tmp_meas):
         """
         Ramps the voltage of a source meter either up or down.
 
@@ -844,12 +914,16 @@ class MainWindow(QtWidgets.QMainWindow):
         # Safety: if HV is higher than 40V (set OVERPROTECTION voltage) or has a negative value it stops the program
         if abs(end_voltage)>30:
             print("WARNING: the HV set is higher than the Overprotection Voltage set!")
-            sys.exit(0)
+            self.lab_status.setText(" WARNING: the HV set is higher than the Overprotection Voltage set! ")
+            self.ramp_HV.setValue(int(tmp_meas[0]))
+            return
 
 
         if end_voltage < 0.:
             print("HV cannot be negative!! ")
-            sys.exit(0)
+            self.lab_status.setText(" HV cannot be negative!! ")
+            self.ramp_HV.setValue(int(tmp_meas[0]))
+            return
 
         # Create buffer for saving data in smu
         # inst.write("testDatabuffer = buffer.make(20000)")
@@ -865,7 +939,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # Do nothing if the voltage is already set at given value
         if set_voltage == end_voltage:
             print("Voltage is already set to ",end_voltage)
-            sys.exit(0)
 
         # Check if the HV is higher or lower than the set value and the ramp up or down. For each step of ramp up/down it prints set voltage and measured current
         if set_voltage > end_voltage:
@@ -899,23 +972,51 @@ class MainWindow(QtWidgets.QMainWindow):
                 time.sleep(0.1)
 
         print("Voltage ramp completed.")
+        self.lab_status.setText(" Voltage ramp completed.")
 
 
 
     def start_ramps(self):
             self.receiver.currents = False
-            self.start_ramp.setText("Ramping...")
+
+            time.sleep(2)
+
+            self.receiver.keithley2.write("voltage_set = smu.source.level")
+            self.receiver.keithley2.write("print(voltage_set)")
+            tmp_pwell = self.receiver.keithley2.read()
+            self.receiver.keithley1.write("voltage_set = smu.source.level")
+            self.receiver.keithley1.write("print(voltage_set)")
+            tmp_psub = self.receiver.keithley1.read()
+            self.receiver.keithley3.write("voltage_set = smu.source.level")
+            self.receiver.keithley3.write("print(voltage_set)")
+            tmp_HV = self.receiver.keithley3.read()
+            tmp_meas = [int(tmp_HV),-int(tmp_pwell),-int(tmp_psub)]
+
+            self.lab_status.setText(" Ramping... ")
+
             # Call the ramp voltage function
             if self.pwell == 0:
-                if self.pwell == 0:
-                    self.ramp_voltage_HV(self.receiver.keithley3, self.HV, self.step, self.delay)
+                if self.psub == 0:
+                    self.lab_status.setText(" Starting ramp ")
+
+                    self.ramp_voltage_DC(self.receiver.keithley2,self.receiver.keithley1, 0, 0, self.step, self.delay,tmp_meas)
+                    time.sleep(0.5)
+
+                    self.ramp_voltage_HV(self.receiver.keithley3, self.HV, self.step, self.delay,tmp_meas)
             else:
                 if self.HV == 0:
-                    self.ramp_voltage_DC(self.receiver.keithley2,self.receiver.keithley1, self.pwell, self.psub, self.step, self.delay)
+                    self.lab_status.setText(" Starting ramp ")
+
+                    self.ramp_voltage_HV(self.receiver.keithley3, 0, self.step, self.delay,tmp_meas)
+                    time.sleep(0.5)
+                    self.ramp_voltage_DC(self.receiver.keithley2,self.receiver.keithley1, self.pwell, self.psub, self.step, self.delay,tmp_meas)
                 else:
                     print("Cannot power both the DCC and HVC parts!!")
+                    self.lab_status.setText(" Cannot power both the DCC and HVC parts!! ")
+                    self.ramp_HV.setValue(tmp_meas[0])
+                    self.ramp_pwell.setValue(tmp_meas[1])
+                    self.ramp_psub.setValue(tmp_meas[2])
 
-            self.start_ramp.setText("Start Ramp")
             self.receiver.currents = True
 
 
